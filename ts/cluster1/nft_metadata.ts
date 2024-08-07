@@ -39,7 +39,7 @@ umi.use(signerIdentity(signer));
             creators: [keypair.publicKey]
         };
         const myUri = await umi.uploader.uploadJson([metadata]);
-        console.log("Your image URI: ", myUri);
+        console.log("Your metadata URI: ", myUri);
         // https://arweave.net/a5NL0tkB1QrtLSqUgFesRDKX8ZIYPUkRif8wmJfTtX8
         // https://arweave.net/0Yj6QO-_5Zpdj7ZGgIhGgckUEdOsXXFhTC3tMN-45BY
     }
