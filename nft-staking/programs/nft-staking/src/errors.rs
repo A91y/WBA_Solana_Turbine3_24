@@ -8,4 +8,6 @@ pub enum StakeError {
     IncorrectCollection,
     #[msg("Collection not verified")]
     CollectionNotVerified,
+    #[msg("Max stake reached")]
+    MaxStakeReached,
 }

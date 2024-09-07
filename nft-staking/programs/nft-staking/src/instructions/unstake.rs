@@ -43,12 +43,16 @@ pub struct Unstake<'info> {
         bump,
     )]
     pub edition: Account<'info, MasterEditionAccount>,
+    #[account(
+        seeds = [b"config".as_ref()],
+        bump =config.bump,
+    )]
     pub config: Account<'info, StakeConfig>,
     #[account(
         mut,
-        close = user,
+        close=user,
         seeds = [b"stake".as_ref(), mint.key().as_ref(), config.key().as_ref()],
-        bump,
+        bump = stake_account.bump,
     )]
     pub stake_account: Account<'info, StakeAccount>,
     #[account(
@@ -64,27 +68,19 @@ pub struct Unstake<'info> {
 
 impl<'info> Unstake<'info> {
     pub fn unstake(&mut self) -> Result<()> {
-        let time_elapsed =
-            ((Clock::get()?.unix_timestamp - self.stake_account.last_update) / 86400) as u32;
-
-        //require!(time_elapsed >= self.config.freeze_period, "Cannot unstake yet");
-
-        self.user_account.points += time_elapsed as u32 * self.config.points_per_stake as u32;
-
-        let seeds = &[
-            b"stake",
-            self.mint.to_account_info().key.as_ref(),
-            self.config.to_account_info().key.as_ref(),
-            &[self.stake_account.bump],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
         let delegate = &self.stake_account.to_account_info();
         let token_account = &self.mint_ata.to_account_info();
         let edition = &self.edition.to_account_info();
         let mint = &self.mint.to_account_info();
         let token_program = &self.token_program.to_account_info();
         let metadata_program = &self.metadata_program.to_account_info();
+
+        let seeds = [
+            b"stake".as_ref(),
+            self.mint.to_account_info().key.as_ref(),
+            self.config.to_account_info().key.as_ref(),
+            &[self.stake_account.bump],
+        ];
 
         ThawDelegatedAccountCpi::new(
             metadata_program,
@@ -96,7 +92,15 @@ impl<'info> Unstake<'info> {
                 token_program,
             },
         )
-        .invoke_signed(signer_seeds)?;
+        .invoke_signed(&[&seeds[..]])?;
+
+        self.user_account.amount_staked -= 1;
+
+        let days = ((Clock::get()?.unix_timestamp - self.stake_account.last_update) / 86400) as u32;
+
+        //require!(time_elapsed >= self.config.freeze_period, "Cannot unstake yet");
+
+        self.user_account.points += days * self.config.points_per_stake as u32;
 
         let cpi_program = self.token_program.to_account_info();
 
@@ -108,8 +112,6 @@ impl<'info> Unstake<'info> {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
         revoke(cpi_ctx)?;
-
-        self.user_account.amount_staked -= 1;
 
         Ok(())
     }

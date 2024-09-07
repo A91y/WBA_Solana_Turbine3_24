@@ -9,7 +9,10 @@ use anchor_spl::{
     token::{approve, Approve, Mint, Token, TokenAccount},
 };
 
-use crate::state::{StakeAccount, StakeConfig, UserAccount};
+use crate::{
+    errors::StakeError,
+    state::{StakeAccount, StakeConfig, UserAccount},
+};
 
 #[derive(Accounts)]
 pub struct Stake<'info> {
@@ -46,12 +49,16 @@ pub struct Stake<'info> {
         bump,
     )]
     pub edition: Account<'info, MasterEditionAccount>,
+    #[account(
+        seeds = [b"config".as_ref()],
+        bump =config.bump,
+    )]
     pub config: Account<'info, StakeConfig>,
     #[account(
         init,
         payer = user,
         space = StakeAccount::INIT_SPACE,
-        seeds = [b"stake".as_ref(), mint.key().as_ref(), config.key().as_ref()],
+        seeds = [b"stake", mint.key().as_ref(), config.key().as_ref()],
         bump,
     )]
     pub stake_account: Account<'info, StakeAccount>,
@@ -87,20 +94,19 @@ impl<'info> Stake<'info> {
 
         approve(cpi_ctx, 1)?;
 
-        let seeds = &[
-            b"stake",
-            self.mint.to_account_info().key.as_ref(),
-            self.config.to_account_info().key.as_ref(),
-            &[self.stake_account.bump],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
         let delegate = &self.stake_account.to_account_info();
         let token_account = &self.mint_ata.to_account_info();
         let edition = &self.edition.to_account_info();
         let mint = &self.mint.to_account_info();
         let token_program = &self.token_program.to_account_info();
         let metadata_program = &self.metadata_program.to_account_info();
+
+        let seeds = [
+            b"stake",
+            self.mint.to_account_info().key.as_ref(),
+            self.config.to_account_info().key.as_ref(),
+            &[self.stake_account.bump],
+        ];
 
         FreezeDelegatedAccountCpi::new(
             metadata_program,
@@ -112,9 +118,12 @@ impl<'info> Stake<'info> {
                 token_program,
             },
         )
-        .invoke_signed(signer_seeds)?;
+        .invoke_signed(&[&seeds[..]])?;
 
-        //require!(self.user_account.amount_staked < self.config.max_stake, "Max stake reached");
+        require!(
+            self.user_account.amount_staked < self.config.max_stake,
+            StakeError::MaxStakeReached
+        );
         self.user_account.amount_staked += 1;
 
         Ok(())
